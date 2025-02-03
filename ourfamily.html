@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Family Tree</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #f0f0f0;
+        }
+        svg {
+            cursor: grab;
+        }
+        .node-group {
+            cursor: move;
+        }
+        .node {
+            fill: #ffd700;
+            stroke: #333;
+            stroke-width: 2;
+        }
+        .node.female {
+            fill: #87ceeb;
+        }
+        .line {
+            stroke: green;
+            stroke-width: 2;
+        }
+        text {
+            font-family: Arial;
+            font-size: 12px;
+            text-anchor: middle;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <svg id="tree" width="100%" height="100%"></svg>
+
+    <script>
+        const familyData = [
+            { id: 1, name: 'Grandfather Nyansio', parent: null, gender: 'male', x: 500, y: 50 },
+            { id: 2, name: 'Grandmother Mwaka', parent: null, gender: 'female', x: 700, y: 50, coupleWith: 1 },
+            
+            { id: 4, name: 'Edes Nyansio', parent: 1, gender: 'male', x: 150, y: 150 },
+            { id: 5, name: 'Vitus Nyansio', parent: 1, gender: 'male', x: 300, y: 150 },
+            { id: 6, name: 'Adeline Nyansio', parent: 1, gender: 'female', x: 450, y: 150 },
+            { id: 7, name: 'Dafloza Nyansio', parent: 1, gender: 'female', x: 600, y: 150 },
+            { id: 8, name: 'Elizath Nyansio', parent: 1, gender: 'female', x: 750, y: 150 },
+            
+            { id: 12, name: 'Stephano Peter', parent: 8, gender: 'male', x: 750, y: 250, coupleWith: 13 },
+            { id: 13, name: 'Witness Greyson', gender: 'female', x: 900, y: 250 },
+            
+            { id: 14, name: 'Elsa Stephano', parent: 12, gender: 'female', x: 825, y: 350 }
+        ];
+
+        const svg = document.getElementById('tree');
+        let selectedNode = null;
+        let offset = { x: 0, y: 0 };
+        const connections = [];
+        let isPanning = false;
+        let startPan = { x: 0, y: 0 };
+        let viewBox = { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight };
+
+        function createNode(person) {
+            const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            group.setAttribute('class', 'node-group');
+            group.setAttribute('transform', `translate(${person.x},${person.y})`);
+            group.dataset.id = person.id;
+
+            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('class', `node ${person.gender}`);
+            circle.setAttribute('r', 30);
+            
+            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            text.setAttribute('y', 5);
+            text.textContent = person.name;
+
+            group.appendChild(circle);
+            group.appendChild(text);
+            
+            group.addEventListener('mousedown', startDrag);
+            return group;
+        }
+
+        function drawConnections() {
+            connections.forEach(conn => conn.remove());
+            connections.length = 0;
+
+            familyData.forEach(person => {
+                if (person.parent) {
+                    const parent = familyData.find(p => p.id === person.parent);
+                    connections.push(drawLine(
+                        parent.x, parent.y + 30,
+                        person.x, person.y - 30
+                    ));
+                }
+
+                if (person.coupleWith) {
+                    const partner = familyData.find(p => p.id === person.coupleWith);
+                    // Horizontal connection at current y-level
+                    connections.push(drawLine(
+                        person.x + 30, person.y,
+                        partner.x - 30, person.y
+                    ));
+                }
+            });
+        }
+
+        function drawLine(x1, y1, x2, y2) {
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('class', 'line');
+            line.setAttribute('x1', x1);
+            line.setAttribute('y1', y1);
+            line.setAttribute('x2', x2);
+            line.setAttribute('y2', y2);
+            svg.appendChild(line);
+            return line;
+        }
+
+        function startDrag(evt) {
+            if (evt.target.tagName === 'circle') {
+                selectedNode = evt.target.parentNode;
+                const transform = selectedNode.getAttribute('transform');
+                const [x, y] = transform.match(/-?\d+/g).map(Number);
+                offset = { x: evt.clientX - x, y: evt.clientY - y };
+                document.addEventListener('mousemove', drag);
+                document.addEventListener('mouseup', stopDrag);
+            } else {
+                // Start panning
+                isPanning = true;
+                startPan = { x: evt.clientX, y: evt.clientY };
+                document.addEventListener('mousemove', pan);
+                document.addEventListener('mouseup', stopPan);
+            }
+        }
+
+        function drag(evt) {
+            const x = evt.clientX - offset.x;
+            const y = evt.clientY - offset.y;
+            
+            selectedNode.setAttribute('transform', `translate(${x},${y})`);
+            
+            const id = parseInt(selectedNode.dataset.id);
+            const person = familyData.find(p => p.id === id);
+            person.x = x;
+            person.y = y;
+            
+            drawConnections();
+        }
+
+        function pan(evt) {
+            if (!isPanning) return;
+            
+            const dx = evt.clientX - startPan.x;
+            const dy = evt.clientY - startPan.y;
+            
+            viewBox.x -= dx;
+            viewBox.y -= dy;
+            startPan = { x: evt.clientX, y: evt.clientY };
+            
+            svg.setAttribute('viewBox', 
+                `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`
+            );
+        }
+
+        function stopDrag() {
+            document.removeEventListener('mousemove', drag);
+            document.removeEventListener('mouseup', stopDrag);
+            selectedNode = null;
+        }
+
+        function stopPan() {
+            isPanning = false;
+            document.removeEventListener('mousemove', pan);
+            document.removeEventListener('mouseup', stopPan);
+        }
+
+        // Initialize tree
+        familyData.forEach(person => svg.appendChild(createNode(person)));
+        drawConnections();
+        svg.setAttribute('viewBox', `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            viewBox.width = window.innerWidth;
+            viewBox.height = window.innerHeight;
+            svg.setAttribute('viewBox', 
+                `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`
+            );
+        });
+    </script>
+</body>
+</html>
